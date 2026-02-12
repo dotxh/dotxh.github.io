@@ -1,0 +1,45 @@
+name: Update GitHub Pages Data
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Fetch secret data with headers
+        run: |
+          # Generate timestamp and nonce
+          TS=$(date -u +%s)
+          NONCE=$(uuidgen)
+
+          # Use secrets for signature and URL
+          SIGNATURE="${{ secrets.SIGNATURE }}"
+          SECRET_URL="${{ secrets.SECRET_URL }}"
+
+          echo "Fetching data from secret URL..."
+          # Fetch the secret URL with headers
+          DATA=$(curl -s -H "x-timestamp: $TS" \
+                         -H "x-nonce: $NONCE" \
+                         -H "x-signature: $SIGNATURE" \
+                         "$SECRET_URL")
+
+          # Combine into JSON for GitHub Pages
+          echo '{}' | jq \
+            --arg ts "$TS" \
+            --arg nonce "$NONCE" \
+            --argjson data "$DATA" \
+            '.timestamp=$ts | .nonce=$nonce | .data=$data' \
+            > data.json
+
+      - name: Commit updated data
+        run: |
+          git config --local user.name "github-actions"
+          git config --local user.email "actions@github.com"
+          git add data.json
+          git diff --quiet || git commit -m "Update secret data with timestamp and nonce"
+          git push
