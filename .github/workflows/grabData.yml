@@ -16,6 +16,7 @@ jobs:
           node -e "
           const crypto = require('crypto');
           const { execSync } = require('child_process');
+          const fs = require('fs');
 
           const ts = Math.floor(Date.now() / 1000).toString();
           const nonce = crypto.randomUUID();
@@ -27,20 +28,17 @@ jobs:
           const payload = method + path + ts + nonce;
           const hmac = crypto.createHmac('sha256', Buffer.from(secret, 'hex')).update(payload).digest('hex');
 
-          console.log('Fetching data from secret URL...');
           const data = execSync(\`curl -s -H 'x-timestamp: \${ts}' -H 'x-nonce: \${nonce}' -H 'x-signature: \${hmac}' \${url}\`).toString();
 
-          const fs = require('fs');
           fs.writeFileSync('data.json', JSON.stringify({ timestamp: ts, nonce: nonce, data: data }));
           "
         env:
           SIGNATURE: ${{ secrets.SIGNATURE }}
           SECRET_URL: ${{ secrets.SECRET_URL }}
 
-      - name: Commit updated data.json
-        run: |
-          git config --local user.name "github-actions"
-          git config --local user.email "actions@github.com"
-          git add data.json
-          git diff --quiet || git commit -m "Update secret data with timestamp and nonce"
-          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git HEAD:main
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: main
