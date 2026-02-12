@@ -11,32 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Fetch secret data with headers
+      - name: Fetch secret data with HMAC
         run: |
-          # Generate timestamp and nonce
           TS=$(date -u +%s)
           NONCE=$(uuidgen)
-
-          # Use secrets for signature and URL
-          SIGNATURE="${{ secrets.SIGNATURE }}"
+          METHOD="GET"
+          PATH="/data"
+          HMAC_SECRET="${{ secrets.SIGNATURE }}"
           SECRET_URL="${{ secrets.SECRET_URL }}"
+          PAYLOAD="${METHOD}${PATH}${TS}${NONCE}"
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -mac HMAC -macopt hexkey:"$HMAC_SECRET" | awk '{print $2}')
+          DATA=$(curl -s -H "x-timestamp: $TS" -H "x-nonce: $NONCE" -H "x-signature: $SIGNATURE" "$SECRET_URL")
+          echo '{}' | jq --arg ts "$TS" --arg nonce "$NONCE" --arg data "$DATA" '.timestamp=$ts | .nonce=$nonce | .data=$data' > data.json
 
-          echo "Fetching data from secret URL..."
-          # Fetch the secret URL with headers
-          DATA=$(curl -s -H "x-timestamp: $TS" \
-                         -H "x-nonce: $NONCE" \
-                         -H "x-signature: $SIGNATURE" \
-                         "$SECRET_URL")
-
-          # Combine into JSON for GitHub Pages
-          echo '{}' | jq \
-            --arg ts "$TS" \
-            --arg nonce "$NONCE" \
-            --argjson data "$DATA" \
-            '.timestamp=$ts | .nonce=$nonce | .data=$data' \
-            > data.json
-
-      - name: Commit updated data
+      - name: Commit updated data.json
         run: |
           git config --local user.name "github-actions"
           git config --local user.email "actions@github.com"
